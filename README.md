@@ -26,8 +26,8 @@ pip install customtkinter plyer
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/PassiveAggressiveApp.git
-cd PassiveAggressiveApp
+git clone https://github.com/abhinandanas/The-Arrogant-Taskmaster.git
+cd The-Arrogant-Taskmaster
 ```
 
 2. Install dependencies:
