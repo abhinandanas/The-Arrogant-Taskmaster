@@ -15,6 +15,7 @@ app.title("The Arrogant Taskmaster")
 
 active_tasks = {}
 task_reminders = {} # Count how many times the user has been insulted for each task
+task_meters = {} # Store the AnalogMeter widget for each task
 
 # --- 2. THE ARROGANT DICTIONARY ---
 # Categorized insults that target specific life failures
@@ -145,6 +146,13 @@ def annoy_user_loop(task_name, wait_time=15):
         if active_tasks.get(task_name) == True:
             task_reminders[task_name] += 1
             
+            # Update meter safely on main thread
+            def update_meter(t=task_name, r=task_reminders[task_name]):
+                if t in task_meters and active_tasks.get(t):
+                    # 10% per notification
+                    task_meters[t].set_pressure(r * 0.1)
+            app.after(0, update_meter)
+            
             # Level 1: Standard Arrogance
             if task_reminders[task_name] == 1:
                 title = "⚠️ INCOMPETENCE DETECTED"
@@ -166,6 +174,53 @@ def annoy_user_loop(task_name, wait_time=15):
                 app_name="Arrogant Taskmaster",
                 timeout=8 
             )
+
+class AnalogMeter(ctk.CTkFrame):
+    def __init__(self, master, size=100, **kwargs):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        self.size = size
+        
+        # Determine canvas size (width=size, height=size/2 + some padding for text)
+        canvas_width = size
+        canvas_height = int(size / 2) + 20
+        
+        self.canvas = ctk.CTkCanvas(self, width=canvas_width, height=canvas_height, 
+                                    bg="#2b2b2b", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+
+        self.margin = 10
+        self.bbox_coords = (self.margin, self.margin, self.size - self.margin, self.size - self.margin)
+        
+        # Background track (gray)
+        self.canvas.create_arc(*self.bbox_coords, start=0, extent=180, 
+                               style="arc", outline="#444444", width=8)
+        
+        # Foreground track (starts empty)
+        self.fg_arc = self.canvas.create_arc(*self.bbox_coords, start=180, extent=0, 
+                                             style="arc", outline="#00cc00", width=8)
+                                             
+        # Text label for percentage
+        self.text_id = self.canvas.create_text(canvas_width / 2, canvas_height - 10, 
+                                               text="0%", fill="white", font=("Helvetica", 14, "bold"))
+        
+    def set_pressure(self, value):
+        # Validate value
+        value = max(0.0, min(1.0, value))
+        
+        # Calculate extent (negative to draw clockwise from 180)
+        extent = -int(value * 180)
+        
+        # Determine color
+        if value <= 0.3:
+            color = "#00cc00" # green
+        elif value <= 0.7:
+            color = "#ff9900" # orange
+        else:
+            color = "#ff3333" # red
+            
+        # Update canvas
+        self.canvas.itemconfig(self.fg_arc, extent=extent, outline=color)
+        self.canvas.itemconfig(self.text_id, text=f"{int(value * 100)}%", fill=color)
 
 # --- 3. UI LAYOUT ---
 header_frame = ctk.CTkFrame(app, fg_color="transparent")
@@ -200,6 +255,11 @@ def add_task():
         task_label = ctk.CTkLabel(task_item_frame, text=f"📍 {task}", font=("Helvetica", 16, "bold"))
         task_label.pack(side="left", padx=20, pady=20)
 
+        # Create meter
+        meter = AnalogMeter(task_item_frame, size=80)
+        meter.pack(side="left", padx=10, pady=5)
+        task_meters[task] = meter
+
         def try_complete_task(t=task, frame=task_item_frame):
             # FIRST INTERROGATION
             if messagebox.askyesno("Wait a minute...", f"Did you actually do '{t}', or are you lying to a computer program?"):
@@ -209,6 +269,8 @@ def add_task():
                     messagebox.showinfo("Fine.", "I'll remove it. But we both know you probably did a mediocre job.")
                     frame.destroy() 
                     active_tasks[t] = False
+                    if t in task_meters:
+                        del task_meters[t]
                 else:
                     messagebox.showwarning("Caught You.", "I knew it. Go back to your hole and finish it.")
             else:
@@ -216,6 +278,8 @@ def add_task():
 
         def stop_notifications(t=task, frame=task_item_frame):
             active_tasks[t] = False
+            if t in task_meters:
+                del task_meters[t]
             frame.destroy()
             messagebox.showinfo("Stopped", f"Fine. I'll stop nagging you about '{t}'. But you're still a failure.")
 
